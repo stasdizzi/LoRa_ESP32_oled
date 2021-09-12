@@ -93,6 +93,11 @@ const lmic_pinmap lmic_pins = {
     .spi_freq = 8000000,
 };
 
+//------ Added ----------------
+const int LED_BLUE = 2;
+const int LED_GREEN = 39;
+//-----------------------------
+
 void LoraWANPrintLMICOpmode(void)
 {
     Serial.print(F("LMIC.opmode: "));
@@ -322,6 +327,41 @@ void onEvent (ev_t ev) {
               Serial.println(F("Received "));
               Serial.println(LMIC.dataLen);
               Serial.println(F(" bytes of payload"));
+
+              //------ Added ----------------
+              /*
+               * Send the following hex values from TTN console to the end device.
+Hex value = 00, Yellow Led = Off, Green led = Off
+Hex value = 01, Yellow Led = On,  Green led = Off
+Hex value = 02, Yellow Led = Off, Green led = On
+Hex value = 03, Yellow Led = On, Green led = On
+Depending on the hex value send, the yellow and green leds can be On or Off.
+               */
+              if (LMIC.dataLen == 1) {
+                uint8_t result = LMIC.frame[LMIC.dataBeg + 0];
+                if (result == 0)  {
+                  Serial.println("RESULT 0");
+                  digitalWrite(LED_BLUE, LOW);
+                  digitalWrite(LED_GREEN, LOW);
+                }              
+                if (result == 1)  {
+                  Serial.println("RESULT 1");
+                  digitalWrite(LED_BLUE, HIGH);
+                  digitalWrite(LED_GREEN, LOW);                  
+                } 
+                if (result == 2)  {
+                  Serial.println("RESULT 2");
+                  digitalWrite(LED_BLUE, LOW);
+                  digitalWrite(LED_GREEN, HIGH);                     
+                } 
+                if (result == 3)  {
+                  Serial.println("RESULT 3");
+                  digitalWrite(LED_BLUE, HIGH);
+                  digitalWrite(LED_GREEN, HIGH);                       
+                }                                             
+              }
+             Serial.println();
+             //-----------------------------
             }
             // Schedule next transmission
 //            os_setTimedCallback(&sendjob, os_getTime()+sec2osticks(TX_INTERVAL), do_send);
@@ -474,6 +514,11 @@ void setup() {
     sht20.initSHT20();                                  // Init SHT20 Sensor
     delay(100);
     sht20.checkSHT20();                                 // Check SHT20 Sensor
+
+//------ Added ----------------
+    pinMode(LED_BLUE, OUTPUT);
+    pinMode(LED_GREEN, OUTPUT);
+    //-----------------------------
 
     Wire.begin();
     // by default, we'll generate the high voltage from the 3.3v line internally! (neat!)
