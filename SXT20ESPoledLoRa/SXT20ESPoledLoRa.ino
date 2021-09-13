@@ -66,7 +66,7 @@ static const u1_t PROGMEM APPKEY[16] = { 0x1E, 0xA6, 0x97, 0x9A, 0x1D, 0x27, 0xD
 void os_getDevKey (u1_t* buf) {  memcpy_P(buf, APPKEY, 16);}
 
 // payload to send to TTN gateway
-static uint8_t payload[5];
+static uint8_t payload[11];
 static osjob_t sendjob;
 
 // Schedule TX every this many seconds (might become longer due to duty
@@ -79,7 +79,9 @@ RTC_DATA_ATTR lmic_t RTC_LMIC;
 // sht
 float temperature;
 float rHumidity;
-
+//analog
+float sensor1Value;
+float sensor2Value;
 
 // Pin mapping for Heltec WiFi LoRa Board
 const lmic_pinmap lmic_pins = {
@@ -95,7 +97,9 @@ const lmic_pinmap lmic_pins = {
 
 //------ Added ----------------
 const int LED_BLUE = 2;
-const int LED_GREEN = 39;
+const int VALVE = 13;
+const int sensor1Pin = 34;
+const int sensor2Pin = 35;
 //-----------------------------
 
 void LoraWANPrintLMICOpmode(void)
@@ -342,22 +346,23 @@ Depending on the hex value send, the yellow and green leds can be On or Off.
                 if (result == 0)  {
                   Serial.println("RESULT 0");
                   digitalWrite(LED_BLUE, LOW);
-                  digitalWrite(LED_GREEN, LOW);
+                  digitalWrite(VALVE, LOW);
                 }              
                 if (result == 1)  {
                   Serial.println("RESULT 1");
                   digitalWrite(LED_BLUE, HIGH);
-                  digitalWrite(LED_GREEN, LOW);                  
+                  digitalWrite(VALVE, LOW);
+                  delay(5000 * 60);                  
                 } 
                 if (result == 2)  {
                   Serial.println("RESULT 2");
                   digitalWrite(LED_BLUE, LOW);
-                  digitalWrite(LED_GREEN, HIGH);                     
+                  digitalWrite(VALVE, HIGH);                     
                 } 
                 if (result == 3)  {
                   Serial.println("RESULT 3");
                   digitalWrite(LED_BLUE, HIGH);
-                  digitalWrite(LED_GREEN, HIGH);                       
+                  digitalWrite(VALVE, HIGH);                       
                 }                                             
               }
              Serial.println();
@@ -400,7 +405,9 @@ Depending on the hex value send, the yellow and green leds can be On or Off.
             display.println("* Sending");
             display.setCursor(0, 25);
             display.print("Temp: ");display.print(temperature*100);display.println(" C, ");
-            display.print("RH%: ");display.print(rHumidity*100);
+            display.print("RH%: ");display.println(rHumidity*100);
+            display.print("Tensiometr1:");display.println(sensor1Value / 7.3);
+            display.print("Tensiometr2:");display.print(sensor2Value / 7.3);
             display.display();
             Serial.println(F("EV_TXSTART"));
             break;
@@ -429,6 +436,16 @@ void do_send(osjob_t* j){
         Serial.println(rHumidity);
         // adjust for the f2sflt16 range (-1 to 1)
         rHumidity = rHumidity / 100;
+
+        //read analog input
+        float sensor1Value = analogRead(sensor1Pin);
+        Serial.print("sensor1:");
+        Serial.println(sensor1Value);
+        sensor1Value = sensor1Value / 730;
+        float sensor2Value = analogRead(sensor2Pin);
+        Serial.print("sensor2:");
+        Serial.println(sensor2Value);
+        sensor2Value = sensor2Value / 730;
         
         // float -> int
         // note: this uses the sflt16 datum (https://github.com/mcci-catena/arduino-lmic#sflt16)
@@ -447,6 +464,25 @@ void do_send(osjob_t* j){
         byte humidHigh = highByte(payloadHumid);
         payload[2] = humidLow;
         payload[3] = humidHigh;
+
+         // float -> int
+        uint16_t val1 = LMIC_f2sflt16(sensor1Value);
+        // int -> bytes
+        byte val1Low = lowByte(val1);
+        byte val1High = highByte(val1);
+        payload[4] = val1Low;
+        payload[5] = val1High;
+
+         // float -> int
+        uint16_t val2 = LMIC_f2sflt16(sensor2Value);
+        // int -> bytes
+        byte val2Low = lowByte(val2);
+        byte val2High = highByte(val2);
+        payload[6] = val2Low;
+        payload[7] = val2High;
+
+
+        
 
         // prepare upstream data transmission at the next possible time.
         // transmit on port 1 (the first parameter); you can use any value from 1 to 223 (others are reserved).
@@ -517,8 +553,9 @@ void setup() {
 
 //------ Added ----------------
     pinMode(LED_BLUE, OUTPUT);
-    pinMode(LED_GREEN, OUTPUT);
+    pinMode(VALVE, OUTPUT);
     //-----------------------------
+    
 
     Wire.begin();
     // by default, we'll generate the high voltage from the 3.3v line internally! (neat!)
@@ -549,7 +586,7 @@ void setup() {
     LMIC_setLinkCheckMode(0);
     // Set the data rate to Spreading Factor 7.  This is the fastest supported rate for 125 kHz channels, and it
     // minimizes air time and battery power. Set the transmission power to 14 dBi (25 mW).
-    LMIC_setDrTxpow(DR_SF7,14);
+    LMIC_setDrTxpow(DR_SF7,16);
     #if defined(CFG_eu868)
     // Set up the channels used by the Things Network, which corresponds
     // to the defaults of most gateways. Without this, only three base
@@ -598,6 +635,9 @@ void loop()
     static unsigned long lastPrintTime = 0;
 
     os_runloop_once();
+
+    sensor1Value = analogRead(sensor1Pin);
+    sensor2Value = analogRead(sensor2Pin);
 
     const bool timeCriticalJobs = os_queryTimeCriticalJobs(ms2osticksRound((TX_INTERVAL * 1000)));
     if (!timeCriticalJobs && GOTO_DEEPSLEEP == true && !(LMIC.opmode & OP_TXRXPEND))
